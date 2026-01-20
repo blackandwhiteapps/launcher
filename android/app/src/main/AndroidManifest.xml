@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <!-- Permission to expand status bar / notification panel -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR"/>
+    <!-- Permission for flashlight -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false"/>
     
     <application
         android:label="Launcher"
@@ -12,7 +16,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:screenOrientation="portrait"
@@ -20,7 +24,9 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:excludeFromRecents="true"
-            android:stateNotNeeded="true">
+            android:stateNotNeeded="true"
+            android:alwaysRetainTaskState="true"
+            android:clearTaskOnLaunch="false">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues

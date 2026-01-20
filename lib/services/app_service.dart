@@ -4,9 +4,10 @@ import 'package:installed_apps/app_info.dart';
 import 'settings_service.dart';
 
 class AppService {
-  static Future<List<AppInfo>> getInstalledApps({bool excludeSystemApps = true}) async {
+  static Future<List<AppInfo>> getInstalledApps({bool excludeSystemApps = false}) async {
     try {
-      // Positional args: excludeSystemApps, withIcon
+      // Get all apps including system apps (Gmail, Camera, Drive are often marked as system apps)
+      // We set excludeSystemApps to false to show all apps, then let users hide what they don't want
       final apps = await InstalledApps.getInstalledApps(excludeSystemApps, false);
       
       // Get hidden apps and filter them out

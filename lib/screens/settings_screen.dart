@@ -74,9 +74,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _saveAndPop();
           }
         },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+        child: GestureDetector(
+          onVerticalDragEnd: (details) {
+            // Swipe up to go home
+            if (details.primaryVelocity != null && details.primaryVelocity! < -500) {
+              _saveAndPop();
+            }
+          },
+          behavior: HitTestBehavior.translucent,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
             Text(
               'Home Screen Widgets',
               style: Theme.of(context).textTheme.headlineMedium,
@@ -113,6 +121,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 });
               },
               widgetName: _widgetName,
+            ),
+            const SizedBox(height: 48),
+            Text(
+              'Flashlight',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: const Text('Show Flashlight Toggle'),
+              subtitle: Text(
+                'Display flashlight toggle in upper right corner',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.foregroundMuted,
+                    ),
+              ),
+              value: _config.showFlashlight,
+              onChanged: (value) {
+                setState(() {
+                  _config = _config.copyWith(showFlashlight: value);
+                });
+              },
+            ),
+            const SizedBox(height: 48),
+            Text(
+              'Search',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            _SearchEngineSelector(
+              value: _config.searchEngine,
+              onChanged: (value) {
+                setState(() {
+                  _config = _config.copyWith(searchEngine: value);
+                });
+              },
             ),
             const SizedBox(height: 48),
             Text(
@@ -199,9 +242,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   });
                 },
               ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _SearchEngineSelector extends StatelessWidget {
+  final SearchEngine value;
+  final ValueChanged<SearchEngine> onChanged;
+
+  const _SearchEngineSelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  String _searchEngineName(SearchEngine engine) {
+    switch (engine) {
+      case SearchEngine.duckduckgo:
+        return 'DuckDuckGo (Chrome)';
+      case SearchEngine.google:
+        return 'Google';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            'Search Engine',
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: DropdownButtonFormField<SearchEngine>(
+            value: value,
+            dropdownColor: AppTheme.background,
+            decoration: const InputDecoration(
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.foregroundMuted),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.foreground),
+              ),
+            ),
+            items: SearchEngine.values.map((engine) {
+              return DropdownMenuItem(
+                value: engine,
+                child: Text(
+                  _searchEngineName(engine),
+                  style: const TextStyle(color: AppTheme.foreground),
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                onChanged(value);
+              }
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
@@ -12,23 +13,38 @@ class BatteryWidget extends StatefulWidget {
 class _BatteryWidgetState extends State<BatteryWidget> {
   static const platform = MethodChannel('com.blackandwhite.launcher/battery');
   int _batteryLevel = -1;
+  Timer? _updateTimer;
 
   @override
   void initState() {
     super.initState();
     _getBatteryLevel();
+    // Update battery level every 30 seconds
+    _updateTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _getBatteryLevel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _updateTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _getBatteryLevel() async {
     try {
       final int result = await platform.invokeMethod('getBatteryLevel');
-      setState(() {
-        _batteryLevel = result;
-      });
+      if (mounted) {
+        setState(() {
+          _batteryLevel = result;
+        });
+      }
     } on PlatformException {
-      setState(() {
-        _batteryLevel = -1;
-      });
+      if (mounted) {
+        setState(() {
+          _batteryLevel = -1;
+        });
+      }
     }
   }
 

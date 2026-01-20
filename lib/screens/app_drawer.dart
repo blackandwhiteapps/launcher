@@ -4,7 +4,9 @@ import '../services/app_service.dart';
 import '../theme/app_theme.dart';
 
 class AppDrawer extends StatefulWidget {
-  const AppDrawer({super.key});
+  final int? initialPage;
+  
+  const AppDrawer({super.key, this.initialPage});
 
   @override
   State<AppDrawer> createState() => _AppDrawerState();
@@ -16,33 +18,27 @@ class _AppDrawerState extends State<AppDrawer> {
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  final ScrollController _scrollController = ScrollController();
-  bool _isAtTop = true;
+  late final PageController _pageController;
   bool _isClosing = false;
+  int _currentPage = 0;
+  static const int _appsPerPage = 6;
 
   @override
   void initState() {
     super.initState();
+    _currentPage = widget.initialPage ?? 0;
+    _pageController = PageController(
+      initialPage: _currentPage,
+    );
     _loadApps();
-    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _searchFocusNode.dispose();
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    _pageController.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    final isAtTop = _scrollController.position.pixels <= 0;
-    if (isAtTop != _isAtTop) {
-      setState(() {
-        _isAtTop = isAtTop;
-      });
-    }
   }
 
   void _closeDrawer() {
@@ -53,28 +49,34 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    // Check if we're at the top using scroll controller
-    final isAtTop =
-        _scrollController.hasClients && _scrollController.position.pixels <= 0;
-
-    // If at top and dragging down significantly, close the drawer
-    if (isAtTop && details.primaryDelta != null && details.primaryDelta! > 10) {
-      // Only close if we've dragged down enough
+    // If dragging down significantly, close the drawer
+    if (details.primaryDelta != null && details.primaryDelta! > 10) {
       _closeDrawer();
     }
   }
 
   void _handleVerticalDragEnd(DragEndDetails details) {
-    // Check if we're at the top using scroll controller
-    final isAtTop =
-        _scrollController.hasClients && _scrollController.position.pixels <= 0;
-
-    // Swipe down to close app drawer when at top
-    if (isAtTop &&
-        details.primaryVelocity != null &&
-        details.primaryVelocity! > 500) {
-      _closeDrawer();
+    if (details.primaryVelocity != null) {
+      // Swipe down to close app drawer
+      if (details.primaryVelocity! > 500) {
+        _closeDrawer();
+      }
+      // Swipe up to go home (close drawer and return to home)
+      else if (details.primaryVelocity! < -500) {
+        _closeDrawer();
+      }
     }
+  }
+  
+  int _getPageCount() {
+    if (_filteredApps.isEmpty) return 1;
+    return (_filteredApps.length / _appsPerPage).ceil();
+  }
+  
+  List<AppInfo> _getAppsForPage(int pageIndex) {
+    final startIndex = pageIndex * _appsPerPage;
+    final endIndex = (startIndex + _appsPerPage).clamp(0, _filteredApps.length);
+    return _filteredApps.sublist(startIndex, endIndex);
   }
 
   Future<void> _loadApps() async {
@@ -84,6 +86,14 @@ class _AppDrawerState extends State<AppDrawer> {
       _filteredApps = apps;
       _isLoading = false;
     });
+    // Ensure initial page is valid after loading apps
+    if (widget.initialPage != null && _pageController.hasClients) {
+      final pageCount = _getPageCount();
+      final targetPage = widget.initialPage!.clamp(0, pageCount - 1);
+      if (targetPage != _pageController.page?.round()) {
+        _pageController.jumpToPage(targetPage);
+      }
+    }
   }
 
   void _filterApps(String query) {
@@ -118,16 +128,16 @@ class _AppDrawerState extends State<AppDrawer> {
                 cursorColor: AppTheme.foreground,
                 decoration: InputDecoration(
                   hintText: 'Search apps...',
-                  hintStyle: const TextStyle(color: AppTheme.foregroundMuted),
+                  hintStyle: const TextStyle(color: AppTheme.foreground),
                   prefixIcon: const Icon(
                     Icons.search,
-                    color: AppTheme.foregroundMuted,
+                    color: AppTheme.foreground,
                   ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(
                             Icons.clear,
-                            color: AppTheme.foregroundMuted,
+                            color: AppTheme.foreground,
                           ),
                           onPressed: () {
                             _searchController.clear();
@@ -136,7 +146,7 @@ class _AppDrawerState extends State<AppDrawer> {
                         )
                       : null,
                   enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: AppTheme.foregroundMuted),
+                    borderSide: BorderSide(color: AppTheme.foreground),
                   ),
                   focusedBorder: const UnderlineInputBorder(
                     borderSide: BorderSide(color: AppTheme.foreground),
@@ -160,60 +170,57 @@ class _AppDrawerState extends State<AppDrawer> {
                             ? 'No apps found'
                             : 'No matching apps',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppTheme.foregroundMuted,
+                          color: AppTheme.foreground,
                         ),
                       ),
                     )
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: (notification) {
-                        if (notification is ScrollUpdateNotification ||
-                            notification is ScrollEndNotification) {
-                          final isAtTop =
-                              _scrollController.hasClients &&
-                              _scrollController.position.pixels <= 0;
-                          if (isAtTop != _isAtTop) {
-                            setState(() {
-                              _isAtTop = isAtTop;
-                            });
-                          }
-                        }
-                        // Allow overscroll notifications to pass through
-                        return false;
-                      },
-                      child: Listener(
-                        onPointerMove: (event) {
-                          // Check if we're at top and dragging down
-                          if (_isAtTop && event.delta.dy > 0) {
-                            // User is dragging down at the top
-                            // This will be handled by the gesture detector
-                          }
+                  : GestureDetector(
+                      onVerticalDragUpdate: _handleVerticalDragUpdate,
+                      onVerticalDragEnd: _handleVerticalDragEnd,
+                      behavior: HitTestBehavior.translucent,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _getPageCount(),
+                        onPageChanged: (page) {
+                          setState(() {
+                            _currentPage = page;
+                          });
                         },
-                        child: GestureDetector(
-                          onVerticalDragUpdate: _handleVerticalDragUpdate,
-                          onVerticalDragEnd: _handleVerticalDragEnd,
-                          behavior: HitTestBehavior.translucent,
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            physics: _isAtTop
-                                ? const AlwaysScrollableScrollPhysics()
-                                : const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: _filteredApps.length,
-                            itemBuilder: (context, index) {
-                              final app = _filteredApps[index];
-                              return _AppListItem(
-                                app: app,
-                                onTap: () =>
-                                    AppService.launchApp(app.packageName),
-                                onLongPress: () =>
-                                    AppService.openAppSettings(app.packageName),
-                              );
-                            },
-                          ),
-                        ),
+                        itemBuilder: (context, pageIndex) {
+                          final pageApps = _getAppsForPage(pageIndex);
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                            child: ListView.builder(
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: pageApps.length,
+                              itemBuilder: (context, index) {
+                                final app = pageApps[index];
+                                return _AppListItem(
+                                  app: app,
+                                  onTap: () =>
+                                      AppService.launchApp(app.packageName),
+                                  onLongPress: () =>
+                                      AppService.openAppSettings(app.packageName),
+                                );
+                              },
+                            ),
+                          );
+                        },
                       ),
                     ),
             ),
+            
+            // Page indicator
+            if (!_isLoading && _filteredApps.isNotEmpty && _getPageCount() > 1)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  '${_currentPage + 1} / ${_getPageCount()}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.foreground,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -238,12 +245,12 @@ class _AppListItem extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: Text(
           app.name,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyLarge?.copyWith(color: AppTheme.foreground),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: AppTheme.foreground,
+          ),
         ),
       ),
     );

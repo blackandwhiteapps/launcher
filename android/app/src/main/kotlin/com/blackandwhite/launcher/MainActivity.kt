@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -18,6 +19,26 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.blackandwhite.launcher/battery"
     private val APP_CHANNEL = "com.blackandwhite.launcher/app"
     private val LAUNCHER_CHANNEL = "com.blackandwhite.launcher/launcher"
+    private var isFlashlightOn = false
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Handle HOME intent - ensure the launcher stays visible
+        if (Intent.ACTION_MAIN == intent.action && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            // With singleTask launch mode, this should bring us to front
+            // Make sure we're visible
+            if (!isFinishing && !isDestroyed) {
+                // Activity should remain visible
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Ensure the launcher is visible when resumed
+        // This is especially important when set as default launcher
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -59,6 +80,13 @@ class MainActivity : FlutterActivity() {
                 "launchCalendar" -> {
                     launchCalendar()
                     result.success(null)
+                }
+                "toggleFlashlight" -> {
+                    toggleFlashlight()
+                    result.success(isFlashlightOn)
+                }
+                "isFlashlightOn" -> {
+                    result.success(isFlashlightOn)
                 }
                 else -> result.notImplemented()
             }
@@ -137,10 +165,55 @@ class MainActivity : FlutterActivity() {
     }
     
     private fun launchCamera() {
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        if (intent.resolveActivity(packageManager) != null) {
-            startActivity(intent)
+        // Try to find camera app by package name first
+        val cameraPackages = listOf(
+            "com.android.camera2",
+            "com.google.android.GoogleCamera",
+            "com.samsung.android.camera",
+            "com.oneplus.camera",
+            "com.huawei.camera",
+            "com.miui.camera",
+            "com.oppo.camera",
+            "com.vivo.camera"
+        )
+        
+        for (packageName in cameraPackages) {
+            try {
+                val intent = packageManager.getLaunchIntentForPackage(packageName)
+                if (intent != null) {
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    return
+                }
+            } catch (e: Exception) {
+                // Continue to next package
+            }
+        }
+        
+        // Fallback: Try to find camera apps by querying for apps that handle camera intents
+        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        val resolveInfos: List<ResolveInfo> = packageManager.queryIntentActivities(cameraIntent, 0)
+        if (resolveInfos.isNotEmpty()) {
+            // Find the first camera app (not the system camera chooser)
+            for (resolveInfo in resolveInfos) {
+                val packageName = resolveInfo.activityInfo.packageName
+                // Skip system packages that are just choosers
+                if (!packageName.contains("com.android.documentsui") && 
+                    !packageName.contains("com.google.android.apps.photos")) {
+                    val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                    if (launchIntent != null) {
+                        launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(launchIntent)
+                        return
+                    }
+                }
+            }
+        }
+        
+        // Last resort: open camera to take photo
+        cameraIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        if (cameraIntent.resolveActivity(packageManager) != null) {
+            startActivity(cameraIntent)
         }
     }
     
@@ -240,6 +313,17 @@ class MainActivity : FlutterActivity() {
                     }
                 }
             }
+        }
+    }
+    
+    private fun toggleFlashlight() {
+        try {
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cameraManager.cameraIdList[0]
+            isFlashlightOn = !isFlashlightOn
+            cameraManager.setTorchMode(cameraId, isFlashlightOn)
+        } catch (e: Exception) {
+            isFlashlightOn = false
         }
     }
 }
