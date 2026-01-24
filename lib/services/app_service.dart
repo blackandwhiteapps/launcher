@@ -4,7 +4,37 @@ import 'package:installed_apps/app_info.dart';
 import 'settings_service.dart';
 
 class AppService {
-  static Future<List<AppInfo>> getInstalledApps({bool excludeSystemApps = false}) async {
+  // Cache for installed apps to avoid slow queries on every drawer open
+  static List<AppInfo>? _cachedApps;
+  static bool _isLoading = false;
+  
+  /// Get cached apps immediately if available, otherwise return empty list
+  static List<AppInfo> getCachedApps() {
+    return _cachedApps ?? [];
+  }
+  
+  /// Check if apps are currently cached
+  static bool hasCachedApps() {
+    return _cachedApps != null;
+  }
+  
+  /// Get installed apps, using cache if available, otherwise loading fresh
+  static Future<List<AppInfo>> getInstalledApps({bool excludeSystemApps = false, bool forceRefresh = false}) async {
+    // Return cached apps if available and not forcing refresh
+    if (!forceRefresh && _cachedApps != null) {
+      return _cachedApps!;
+    }
+    
+    // Prevent multiple simultaneous loads
+    if (_isLoading) {
+      // Wait for the ongoing load to complete
+      while (_isLoading) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      return _cachedApps ?? [];
+    }
+    
+    _isLoading = true;
     try {
       // Get all apps including system apps (Gmail, Camera, Drive are often marked as system apps)
       // We set excludeSystemApps to false to show all apps, then let users hide what they don't want
@@ -16,10 +46,25 @@ class AppService {
       
       // Sort alphabetically by name
       filteredApps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      
+      // Update cache
+      _cachedApps = filteredApps;
       return filteredApps;
     } catch (e) {
-      return [];
+      return _cachedApps ?? [];
+    } finally {
+      _isLoading = false;
     }
+  }
+  
+  /// Refresh the app cache in the background
+  static Future<void> refreshCache({bool excludeSystemApps = false}) async {
+    await getInstalledApps(excludeSystemApps: excludeSystemApps, forceRefresh: true);
+  }
+  
+  /// Clear the cache (useful when apps are installed/uninstalled)
+  static void clearCache() {
+    _cachedApps = null;
   }
   
   static Future<List<AppInfo>> getAllApps() async {

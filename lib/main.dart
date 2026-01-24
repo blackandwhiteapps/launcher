@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'services/search_history_service.dart';
+import 'services/app_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SearchHistoryService.init();
   AppTheme.setSystemUI();
+  // Preload app list in the background for faster drawer opening
+  AppService.refreshCache();
   runApp(const LauncherApp());
 }
 

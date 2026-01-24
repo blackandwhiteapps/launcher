@@ -4,6 +4,7 @@ import '../services/settings_service.dart';
 import '../services/app_service.dart';
 import '../theme/app_theme.dart';
 import 'hidden_apps_screen.dart';
+import 'common_apps_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final WidgetConfig config;
@@ -173,6 +174,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(
               'App Management',
               style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Common Apps'),
+              subtitle: Text(
+                'Configure 0-6 apps to show on home screen',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.foregroundMuted,
+                    ),
+              ),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: AppTheme.foregroundMuted,
+              ),
+              onTap: () async {
+                final result = await Navigator.of(context).push<List<String>>(
+                  MaterialPageRoute(
+                    builder: (context) => CommonAppsScreen(
+                      initialCommonApps: _config.commonApps,
+                    ),
+                  ),
+                );
+                if (result != null) {
+                  setState(() {
+                    _config = _config.copyWith(commonApps: result);
+                  });
+                }
+              },
             ),
             const SizedBox(height: 16),
             ListTile(

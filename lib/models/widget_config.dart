@@ -16,6 +16,7 @@ class WidgetConfig {
   final HomeWidget bottomWidget;
   final bool showFlashlight;
   final SearchEngine searchEngine;
+  final List<String> commonApps;
 
   const WidgetConfig({
     this.topWidget = HomeWidget.none,
@@ -23,6 +24,7 @@ class WidgetConfig {
     this.bottomWidget = HomeWidget.date,
     this.showFlashlight = true,
     this.searchEngine = SearchEngine.duckduckgo,
+    this.commonApps = const [],
   });
 
   WidgetConfig copyWith({
@@ -31,6 +33,7 @@ class WidgetConfig {
     HomeWidget? bottomWidget,
     bool? showFlashlight,
     SearchEngine? searchEngine,
+    List<String>? commonApps,
   }) {
     return WidgetConfig(
       topWidget: topWidget ?? this.topWidget,
@@ -38,6 +41,7 @@ class WidgetConfig {
       bottomWidget: bottomWidget ?? this.bottomWidget,
       showFlashlight: showFlashlight ?? this.showFlashlight,
       searchEngine: searchEngine ?? this.searchEngine,
+      commonApps: commonApps ?? this.commonApps,
     );
   }
 
@@ -47,6 +51,7 @@ class WidgetConfig {
         'bottomWidget': bottomWidget.index,
         'showFlashlight': showFlashlight,
         'searchEngine': searchEngine.index,
+        'commonApps': commonApps,
       };
 
   factory WidgetConfig.fromJson(Map<String, dynamic> json) {
@@ -56,6 +61,9 @@ class WidgetConfig {
       bottomWidget: HomeWidget.values[json['bottomWidget'] ?? 1],
       showFlashlight: json['showFlashlight'] ?? true,
       searchEngine: SearchEngine.values[json['searchEngine'] ?? 0],
+      commonApps: json['commonApps'] != null 
+          ? List<String>.from(json['commonApps']).take(6).toList()
+          : const [],
     );
   }
 }

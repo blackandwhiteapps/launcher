@@ -70,6 +70,8 @@ class _HiddenAppsScreenState extends State<HiddenAppsScreen> {
     });
 
     await SettingsService.saveHiddenApps(_hiddenApps);
+    // Clear cache so drawer will show updated app list
+    AppService.clearCache();
   }
 
   bool _isAppHidden(AppInfo app) {
@@ -207,6 +209,7 @@ class _AppListItem extends StatelessWidget {
     );
   }
 }
+
 
 
 

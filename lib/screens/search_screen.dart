@@ -124,7 +124,8 @@ class _SearchScreenState extends State<SearchScreen> {
         canPop: true,
         onPopInvokedWithResult: (didPop, result) {
           if (!didPop) {
-            Navigator.of(context).pop();
+            // Go to home screen (pop until we reach the first route)
+            Navigator.of(context).popUntil((route) => route.isFirst);
           }
         },
         child: GestureDetector(
@@ -132,7 +133,8 @@ class _SearchScreenState extends State<SearchScreen> {
             // Swipe up to go home
             if (details.primaryVelocity != null &&
                 details.primaryVelocity! < -500) {
-              Navigator.of(context).pop();
+              // Go to home screen (pop until we reach the first route)
+              Navigator.of(context).popUntil((route) => route.isFirst);
             }
           },
           behavior: HitTestBehavior.translucent,

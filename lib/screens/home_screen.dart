@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:installed_apps/app_info.dart';
 import '../models/widget_config.dart';
 import '../services/settings_service.dart';
 import '../services/app_service.dart';
@@ -8,6 +9,7 @@ import '../widgets/flashlight_widget.dart';
 import 'app_drawer.dart';
 import 'settings_screen.dart';
 import 'search_screen.dart';
+import 'info_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,17 +22,54 @@ class _HomeScreenState extends State<HomeScreen> {
   WidgetConfig _widgetConfig = const WidgetConfig();
   double? _dragStartX;
   bool _isOpeningDrawer = false;
+  List<AppInfo> _commonApps = [];
+  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: 0);
     _loadConfig();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadConfig() async {
     final config = await SettingsService.loadWidgetConfig();
     setState(() {
       _widgetConfig = config;
+    });
+    _loadCommonApps(config.commonApps);
+  }
+
+  Future<void> _loadCommonApps(List<String> packageNames) async {
+    if (packageNames.isEmpty) {
+      setState(() {
+        _commonApps = [];
+      });
+      return;
+    }
+
+    final allApps = await AppService.getAllApps();
+    final commonApps = <AppInfo>[];
+    
+    for (final packageName in packageNames) {
+      try {
+        final app = allApps.firstWhere(
+          (app) => app.packageName == packageName,
+        );
+        commonApps.add(app);
+      } catch (e) {
+        // App not found, skip it
+      }
+    }
+
+    setState(() {
+      _commonApps = commonApps;
     });
   }
 
@@ -85,9 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   
   Future<int> _calculatePageFromPosition(double x, double screenWidth) async {
-    // Get total number of apps to calculate pages
-    final apps = await AppService.getInstalledApps();
-    const appsPerPage = 6;
+    // Use cached apps if available for instant calculation, otherwise load
+    List<AppInfo> apps;
+    if (AppService.hasCachedApps()) {
+      apps = AppService.getCachedApps();
+    } else {
+      apps = await AppService.getInstalledApps();
+    }
+    const appsPerPage = 8;
     final totalPages = (apps.length / appsPerPage).ceil();
     
     if (totalPages <= 1) return 0;
@@ -100,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return pageIndex.clamp(0, totalPages - 1);
   }
 
+
   void _openSettings() async {
     final result = await Navigator.of(context).push<WidgetConfig>(
       MaterialPageRoute(
@@ -110,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _widgetConfig = result;
       });
+      _loadCommonApps(result.commonApps);
     }
   }
 
@@ -117,154 +163,180 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: GestureDetector(
-        onVerticalDragStart: (details) {
-          _dragStartX = details.localPosition.dx;
-        },
-        onVerticalDragEnd: (details) async {
-          if (details.primaryVelocity != null) {
-            // Swipe up to open app drawer
-            if (details.primaryVelocity! < -500) {
-              // Prevent opening if already opening or drawer is open
-              if (_isOpeningDrawer) {
-                _dragStartX = null;
-                return;
+      body: PageView(
+        controller: _pageController,
+        physics: const ClampingScrollPhysics(),
+        children: [
+          // Home page
+          GestureDetector(
+            onVerticalDragStart: (details) {
+              _dragStartX = details.localPosition.dx;
+            },
+            onVerticalDragEnd: (details) async {
+              if (details.primaryVelocity != null) {
+                // Swipe up to open app drawer
+                if (details.primaryVelocity! < -500) {
+                  // Prevent opening if already opening or drawer is open
+                  if (_isOpeningDrawer) {
+                    _dragStartX = null;
+                    return;
+                  }
+                  
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final startX = _dragStartX ?? screenWidth / 2;
+                  final targetPage = await _calculatePageFromPosition(startX, screenWidth);
+                  
+                  // Check again after async operation
+                  if (!_isOpeningDrawer && mounted) {
+                    _openAppDrawer(initialPage: targetPage);
+                  }
+                }
+                // Swipe down to open notification panel
+                else if (details.primaryVelocity! > 500) {
+                  AppService.openNotificationPanel();
+                }
               }
-              
-              final screenWidth = MediaQuery.of(context).size.width;
-              final startX = _dragStartX ?? screenWidth / 2;
-              final targetPage = await _calculatePageFromPosition(startX, screenWidth);
-              
-              // Check again after async operation
-              if (!_isOpeningDrawer && mounted) {
-                _openAppDrawer(initialPage: targetPage);
-              }
-            }
-            // Swipe down to open notification panel
-            else if (details.primaryVelocity! > 500) {
-              AppService.openNotificationPanel();
-            }
-          }
-          _dragStartX = null;
-        },
-        onLongPress: _openSettings,
-        behavior: HitTestBehavior.translucent,
-        child: Container(
-          color: AppTheme.background,
-          width: double.infinity,
-          height: double.infinity,
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top widget
-                      if (_widgetConfig.topWidget != HomeWidget.none)
-                        HomeWidgetDisplay(widgetType: _widgetConfig.topWidget),
-
-                      const Spacer(),
-
-                      // Center widget
-                      if (_widgetConfig.centerWidget != HomeWidget.none)
-                        HomeWidgetDisplay(widgetType: _widgetConfig.centerWidget),
-
-                      const SizedBox(height: 8),
-
-                      // Bottom widget
-                      if (_widgetConfig.bottomWidget != HomeWidget.none)
-                        HomeWidgetDisplay(widgetType: _widgetConfig.bottomWidget),
-
-                      const Spacer(),
-
-                      // Search input
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const SearchScreen(),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: AppTheme.foreground, width: 1),
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.search,
-                                  color: AppTheme.foreground,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'Search',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppTheme.foreground,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Quick action buttons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+              _dragStartX = null;
+            },
+            onLongPress: _openSettings,
+            behavior: HitTestBehavior.translucent,
+            child: Container(
+              color: AppTheme.background,
+              width: double.infinity,
+              height: double.infinity,
+              child: SafeArea(
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _QuickActionButton(
-                            icon: Icons.phone,
-                            onTap: () => AppService.launchPhone(),
+                          // Top widget
+                          if (_widgetConfig.topWidget != HomeWidget.none)
+                            HomeWidgetDisplay(widgetType: _widgetConfig.topWidget),
+
+                          const Spacer(),
+
+                          // Center widget
+                          if (_widgetConfig.centerWidget != HomeWidget.none)
+                            HomeWidgetDisplay(widgetType: _widgetConfig.centerWidget),
+
+                          const SizedBox(height: 8),
+
+                          // Bottom widget
+                          if (_widgetConfig.bottomWidget != HomeWidget.none)
+                            HomeWidgetDisplay(widgetType: _widgetConfig.bottomWidget),
+
+                          const Spacer(),
+
+                          // Common apps
+                          if (_commonApps.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+                              child: Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                alignment: WrapAlignment.center,
+                                children: _commonApps.map((app) {
+                                  return _CommonAppButton(
+                                    app: app,
+                                    onTap: () => AppService.launchApp(app.packageName),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+
+                          // Search input
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const SearchScreen(),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: AppTheme.foreground, width: 1),
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.search,
+                                      color: AppTheme.foreground,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Search',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: AppTheme.foreground,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                          const SizedBox(width: 32),
-                          _QuickActionButton(
-                            icon: Icons.message,
-                            onTap: () => AppService.launchMessages(),
+
+                          const SizedBox(height: 16),
+
+                          // Quick action buttons
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _QuickActionButton(
+                                icon: Icons.phone,
+                                onTap: () => AppService.launchPhone(),
+                              ),
+                              const SizedBox(width: 32),
+                              _QuickActionButton(
+                                icon: Icons.message,
+                                onTap: () => AppService.launchMessages(),
+                              ),
+                              const SizedBox(width: 32),
+                              _QuickActionButton(
+                                icon: Icons.camera_alt,
+                                onTap: () => AppService.launchCamera(),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 32),
-                          _QuickActionButton(
-                            icon: Icons.camera_alt,
-                            onTap: () => AppService.launchCamera(),
+
+                          const SizedBox(height: 24),
+
+                          // Swipe hint
+                          Center(
+                            child: Text(
+                              'Swipe up for apps • Swipe right for info',
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: AppTheme.foregroundMuted.withValues(alpha: 0.5),
+                                  ),
+                            ),
                           ),
                         ],
                       ),
-
-                      const SizedBox(height: 24),
-
-                      // Swipe hint
-                      Center(
-                        child: Text(
-                          'Swipe up for apps',
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                color: AppTheme.foregroundMuted.withValues(alpha: 0.5),
-                              ),
-                        ),
+                    ),
+                    // Flashlight toggle in upper right
+                    if (_widgetConfig.showFlashlight)
+                      Positioned(
+                        top: 16,
+                        right: 24,
+                        child: const FlashlightWidget(),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-                // Flashlight toggle in upper right
-                if (_widgetConfig.showFlashlight)
-                  Positioned(
-                    top: 16,
-                    right: 24,
-                    child: const FlashlightWidget(),
-                  ),
-              ],
+              ),
             ),
           ),
-        ),
+          // Info page
+          const InfoScreen(),
+        ],
       ),
     );
   }
@@ -298,6 +370,40 @@ class _QuickActionButton extends StatelessWidget {
           icon,
           color: AppTheme.foreground,
           size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+class _CommonAppButton extends StatelessWidget {
+  final AppInfo app;
+  final VoidCallback onTap;
+
+  const _CommonAppButton({
+    required this.app,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: AppTheme.foregroundMuted.withValues(alpha: 0.3),
+            width: 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          app.name,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.foreground,
+              ),
         ),
       ),
     );
